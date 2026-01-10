@@ -17,7 +17,7 @@ __all__ = [
     "CategoryCreate",
     "CategoryUpdate",
     # User schemas (добавь когда создашь)
-    # "User",
-    # "UserCreate",
-    # "UserUpdate",
+    "User",
+    "UserCreate",
+    "UserUpdate",
 ]
