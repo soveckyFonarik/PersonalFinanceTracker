@@ -4,24 +4,34 @@ version = "0.1.0"
 description = "Personal Finance Management API"
 readme = "README.md"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+
 dependencies = [
-    "fastapi==0.104.1",
-    "uvicorn[standard]==0.24.0",
+    "fastapi>=0.104.1",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.5.0",
+    "python-multipart>=0.0.6",  # Для загрузки файлов
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.11.0",
+    "isort>=5.12.0",
+    "flake8>=6.1.0",
+    "mypy>=1.7.0",
+    "pre-commit>=3.5.0",
+    "httpx>=0.25.1",
 ]
 
 [build-system]
 requires = ["setuptools>=64.0", "wheel"]
 build-backend = "setuptools.build_meta"
-
-[project.optional-dependencies]
-dev = [
-    "pytest==7.4.3",
-    "black==23.11.0",
-    "httpx==0.25.1",
-    "isort==5.12.0",
-    "flake8==6.1.0",
-    "pytest-asyncio>=0.21.0"
-]
 
 [tool.black]
 line-length = 88
@@ -35,9 +45,12 @@ line_length = 88
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
+addopts = "-v --tb=short -l"
 
-[tool.pytest.ini_options.markers]
-asyncio = "mark test as using asyncio"
-slow = "marks tests as slow"
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+
+[tool.setuptools]
+packages = ["app"]
