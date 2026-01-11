@@ -10,16 +10,21 @@ from sqlalchemy.orm import DeclarativeBase
 from app.config import settings
 
 
-class Base(DeclarativeBase):
-    """Базовый класс для всех моделей SQLAlchemy"""
+# class Base(DeclarativeBase):
+#     """Базовый класс для всех моделей SQLAlchemy"""
 
-    pass
+#     pass
 
+# Используем SQLite для разработки, PostgreSQL для продакшена
+DATABASE_URL = settings.database_url if not settings.DEBUG else settings.sqlite_url
 
 # Создаем движок для подключения
 engine: AsyncEngine = create_async_engine(
-    settings.database_url,
-    echo=settings.debug,  # Показывать SQL запросы в консоли при DEBUG=true
+    DATABASE_URL,
+    echo=settings.DEBUG,  # Показывать SQL запросы в консоли при DEBUG=true
+    future=True,
+    pool_pre_ping=True,  # Проверка соединения перед использованием
+    pool_recycle=3600,  # Пересоздание соединений каждый час
 )
 
 # Создаем фабрику сессий
@@ -27,6 +32,8 @@ AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,
     expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
 )
 
 

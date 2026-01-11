@@ -17,7 +17,7 @@ from sqlalchemy import text
 async def check_tables():
     """Проверяет существование и структуру таблиц"""
     print("🔍 Проверка таблиц в PostgreSQL...")
-    print(f"База данных: {settings.postgres_db}")
+    print(f"База данных: {settings.POSTGRES_DB}")
     print("=" * 60)
 
     try:

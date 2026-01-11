@@ -6,17 +6,17 @@ from app.config import settings
 async def test_connection():
     """check connection"""
     print("🔌 Тестируем подключение к PostgreSQL...")
-    print(f"Хост: {settings.postgres_host}:{settings.postgres_port}")
-    print(f"База: {settings.postgres_db}")
-    print(f"Пользователь: {settings.postgres_user}")
-    print(f"Пароль: {settings.postgres_password}")
+    print(f"Хост: {settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}")
+    print(f"База: {settings.POSTGRES_DB}")
+    print(f"Пользователь: {settings.POSTGRES_USER}")
+    print(f"Пароль: {settings.POSTGRES_PASSWORD}")
 
     try:
         conn = await asyncpg.connect(
-            host=settings.postgres_host,
-            port=settings.postgres_port,
-            user=settings.postgres_user,
-            password=settings.postgres_password,
+            host=settings.POSTGRES_HOST,
+            port=settings.POSTGRES_PORT,
+            user=settings.POSTGRES_USER,
+            password=settings.POSTGRES_PASSWORD,
         )
 
         version = await conn.fetchval("SELECT version();")

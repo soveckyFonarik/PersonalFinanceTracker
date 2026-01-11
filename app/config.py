@@ -1,36 +1,49 @@
-import os
-from dotenv import load_dotenv
-
-# from pydantic_settings import BaseSettings
-# from typing import Optional
-load_dotenv()
+# app/config.py
+from pydantic_settings import BaseSettings
+from typing import Optional
 
 
-class Settings:
-    """Настройки приложения из переменных окружения"""
+class Settings(BaseSettings):
+    """Настройки приложения."""
 
+    ENVIRONMENT: str = "development"
     # Настройки PostgreSQL
-    postgres_host = os.getenv("POSTGRES_HOST", "localhost")
-    postgres_port = int(os.getenv("POSTGRES_PORT", 5432))
-    postgres_user = os.getenv("POSTGRES_USER", "postgres")
-    postgres_password = os.getenv("POSTGRES_PASSWORD", "")
-    postgres_db = os.getenv("POSTGRES_DB", "finance_tracker")
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: str = ""
+    POSTGRES_DB: str = "finance_tracker"
 
     # Настройки приложения
-    debug: bool = bool(os.getenv("DEBUG", False))
-    api_prefix: str = os.getenv("API_PREFIX", "/api/v1")
-    secret_key: str = os.getenv("SECRET_KEY", "your-secret-key-change-this")
+    DEBUG: bool = False
+    API_PREFIX: str = "/api/v1"
 
-    # Формируем URL для подключения
+    # Настройки безопасности
+    SECRET_KEY: str = "your-secret-key-change-this"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
     @property
     def database_url(self) -> str:
         """Возвращает URL для подключения к PostgreSQL через asyncpg"""
         return (
-            f"postgresql+asyncpg://{self.postgres_user}:"
-            f"{self.postgres_password}@{self.postgres_host}:"
-            f"{self.postgres_port}/{self.postgres_db}"
+            f"postgresql+asyncpg://{self.POSTGRES_USER}:"
+            f"{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:"
+            f"{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
 
+    # Для разработки можно использовать SQLite
+    @property
+    def sqlite_url(self) -> str:
+        """URL для SQLite (для разработки и тестов)"""
+        return "sqlite+aiosqlite:///./finance.db"
 
-# Глобальный объект настроек
+    class Config:
+        # Указываем файл .env для загрузки переменных окружения
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        # case_sensitive = False
+        extra = "ignore"  # Игнорировать лишние поля в .env
+
+
 settings = Settings()
