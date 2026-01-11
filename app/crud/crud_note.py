@@ -2,8 +2,7 @@
 CRUD операции для заметок.
 """
 
-from typing import Optional
-
+from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -13,45 +12,50 @@ from app.schemas.note import NoteCreate, NoteUpdate
 
 
 class CRUDNote(CRUDBase[Note, NoteCreate, NoteUpdate]):
-    """CRUD операции для заметок."""
+    """
+    CRUD операции для Note с дополнительными методами.
+    """
 
-    async def get_by_title(self, db: AsyncSession, *, title: str) -> Optional[Note]:
+    async def search_by_title(
+        self, db: AsyncSession, *, title: str, skip: int = 0, limit: int = 100
+    ) -> List[Note]:
         """
-        Получить заметку по заголовку.
+        Поиск заметок по заголовку (case-insensitive).
 
         Args:
-            db: Асинхронная сессия БД
-            title: Заголовок заметки
+            db: Сессия БД
+            title: Часть заголовка для поиска
+            skip: Сколько пропустить
+            limit: Максимальное количество
 
         Returns:
-            Заметка или None
+            Список найденных заметок
         """
-        result = await db.execute(select(Note).where(Note.title == title))
-        return result.scalar_one_or_none()
-
-    async def search(
-        self, db: AsyncSession, *, query: str, skip: int = 0, limit: int = 100
-    ):
-        """
-        Поиск заметок по содержанию.
-
-        Args:
-            db: Асинхронная сессия БД
-            query: Поисковый запрос
-            skip: Сколько записей пропустить
-            limit: Максимальное количество записей
-
-        Returns:
-            Список заметок
-        """
-        result = await db.execute(
-            select(Note)
-            .where(Note.title.ilike(f"%{query}%") | Note.content.ilike(f"%{query}%"))
-            .offset(skip)
-            .limit(limit)
+        query = (
+            select(Note).where(Note.title.ilike(f"%{title}%")).offset(skip).limit(limit)
         )
+        result = await db.execute(query)
         return list(result.scalars().all())
 
+    async def get_multi_by_user(
+        self, db: AsyncSession, *, user_id: str, skip: int = 0, limit: int = 100
+    ) -> List[Note]:
+        """
+        Получить заметки пользователя (заготовка на будущее).
 
-# Создаем экземпляр CRUDNote для использования в приложении
+        Args:
+            db: Сессия БД
+            user_id: ID пользователя
+            skip: Сколько пропустить
+            limit: Максимальное количество
+
+        Returns:
+            Список заметок пользователя
+        """
+        # Пока просто возвращаем все заметки
+        # В будущем добавим связь Note -> User
+        return await self.get_multi(db, skip=skip, limit=limit)
+
+
+# Создаем экземпляр для использования
 note = CRUDNote(Note)

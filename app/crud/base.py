@@ -3,66 +3,71 @@
 """
 
 from typing import Any, Dict, Generic, List, Optional, Type, TypeVar, Union
-from uuid import UUID
-
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
-from app.models import Base
+# Импортируем Base из ваших моделей
+from app.models.base import BaseModel as AppBaseModel
 
-ModelType = TypeVar("ModelType", bound=Base)
+# Типы для дженериков
+# Используем AppBaseModel вместо Base, так как он имеет поле id
+ModelType = TypeVar("ModelType", bound=AppBaseModel)
 CreateSchemaType = TypeVar("CreateSchemaType", bound=BaseModel)
 UpdateSchemaType = TypeVar("UpdateSchemaType", bound=BaseModel)
 
 
 class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
-    """Базовый класс CRUD с методами Create, Read, Update, Delete."""
+    """
+    Базовый класс с CRUD операциями: Create, Read, Update, Delete.
+
+    Generic параметры:
+    - ModelType: SQLAlchemy модель (Note, Category, User)
+    - CreateSchemaType: Pydantic схема для создания
+    - UpdateSchemaType: Pydantic схема для обновления
+    """
 
     def __init__(self, model: Type[ModelType]):
         """
-        Инициализация CRUD класса.
+        Инициализация CRUD с указанием модели.
 
         Args:
             model: SQLAlchemy модель
         """
         self.model = model
 
-    async def get(self, db: AsyncSession, id: Union[str, UUID]) -> Optional[ModelType]:
+    async def get(self, db: AsyncSession, id: str) -> Optional[ModelType]:
         """
-        Получить объект по ID.
+        Получить один объект по ID.
 
         Args:
-            db: Асинхронная сессия БД
-            id: ID объекта
+            db: Сессия БД
+            id: ID объекта (строка, UUID)
 
         Returns:
-            Объект модели или None
+            Объект модели или None если не найден
         """
-        from sqlalchemy import select, inspect
-
-        mapper = inspect(self.model)
-
-        # Используем primary_key из mapper
-        stmt = select(self.model).where(mapper.primary_key[0] == id)
-        result = await db.execute(stmt)
+        query = select(self.model).where(self.model.id == id)
+        result = await db.execute(query)
         return result.scalar_one_or_none()
 
     async def get_multi(
         self, db: AsyncSession, *, skip: int = 0, limit: int = 100
     ) -> List[ModelType]:
         """
-        Получить список объектов с пагинацией.
+        Получить несколько объектов с пагинацией.
 
         Args:
-            db: Асинхронная сессия БД
-            skip: Сколько записей пропустить
-            limit: Максимальное количество записей
+            db: Сессия БД
+            skip: Сколько пропустить
+            limit: Максимальное количество
 
         Returns:
             Список объектов
         """
-        result = await db.execute(select(self.model).offset(skip).limit(limit))
+        query = select(self.model).offset(skip).limit(limit)
+        result = await db.execute(query)
         return list(result.scalars().all())
 
     async def create(self, db: AsyncSession, *, obj_in: CreateSchemaType) -> ModelType:
@@ -70,21 +75,21 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         Создать новый объект.
 
         Args:
-            db: Асинхронная сессия БД
-            obj_in: Pydantic схема с данными
+            db: Сессия БД
+            obj_in: Данные для создания (Pydantic схема)
 
         Returns:
             Созданный объект
         """
-        # Преобразуем Pydantic модель в словарь
-        obj_in_data = obj_in.model_dump()
+        # Конвертируем Pydantic объект в dict
+        obj_in_data = jsonable_encoder(obj_in)
 
-        # Создаем объект SQLAlchemy
+        # Создаем объект модели
         db_obj = self.model(**obj_in_data)
 
-        # Добавляем в сессию
+        # Сохраняем в БД
         db.add(db_obj)
-        await db.flush()
+        await db.commit()
         await db.refresh(db_obj)
 
         return db_obj
@@ -100,51 +105,48 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         Обновить существующий объект.
 
         Args:
-            db: Асинхронная сессия БД
+            db: Сессия БД
             db_obj: Существующий объект из БД
-            obj_in: Pydantic схема или словарь с данными для обновления
+            obj_in: Данные для обновления (схема или dict)
 
         Returns:
             Обновленный объект
         """
-        # Если obj_in - Pydantic модель, преобразуем в словарь
-        if isinstance(obj_in, BaseModel):
-            update_data = obj_in.model_dump(exclude_unset=True)
-        else:
+        # Получаем данные для обновления
+        if isinstance(obj_in, dict):
             update_data = obj_in
+        else:
+            update_data = obj_in.model_dump(exclude_unset=True)
 
         # Обновляем поля объекта
-        for field in update_data:
-            if hasattr(db_obj, field) and update_data[field] is not None:
-                setattr(db_obj, field, update_data[field])
+        for field, value in update_data.items():
+            if hasattr(db_obj, field) and value is not None:
+                setattr(db_obj, field, value)
 
-        # # Обновляем updated_at
-        # if hasattr(db_obj, "updated_at"):
-        #     from datetime import datetime
-
-        #     db_obj.updated_at = datetime.utcnow()
-
+        # Сохраняем изменения
         db.add(db_obj)
-        await db.flush()
+        await db.commit()
         await db.refresh(db_obj)
 
         return db_obj
 
-    async def delete(
-        self, db: AsyncSession, *, id: Union[str, UUID]
-    ) -> Optional[ModelType]:
+    async def remove(self, db: AsyncSession, *, id: str) -> Optional[ModelType]:
         """
         Удалить объект по ID.
 
         Args:
-            db: Асинхронная сессия БД
-            id: ID объекта для удаления
+            db: Сессия БД
+            id: ID объекта для удаления (строка, UUID)
 
         Returns:
-            Удаленный объект или None
+            Удаленный объект или None если не найден
         """
+        # Получаем объект
         obj = await self.get(db, id)
+
         if obj:
+            # Удаляем
             await db.delete(obj)
-            await db.flush()
+            await db.commit()
+
         return obj
