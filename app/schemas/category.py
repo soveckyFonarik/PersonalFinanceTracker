@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional
 from datetime import datetime
-from app.schemas.validators import ColorValidatorMixin
+from app.schemas.validators import ColorValidatorMixi
 
 
 class CategoryBase(BaseModel, ColorValidatorMixin):

@@ -4,7 +4,7 @@
 
 import pytest
 from datetime import datetime
-from app.schemas.note import NoteCreate, NoteUpdate, Note
+from app.schemas.note import NoteCreate, NoteUpdate, NoteSchema
 from app.schemas.category import CategoryCreate, CategoryUpdate, Category
 from app.schemas.user import UserCreate, UserUpdate, User
 
@@ -50,7 +50,7 @@ class TestNoteSchemas:
             updated_at=datetime.now(),
         )
 
-        schema = Note.model_validate(model)
+        schema = NoteSchema.model_validate(model)
 
         assert schema.id == "test-uuid"
         assert schema.title == "Тест"

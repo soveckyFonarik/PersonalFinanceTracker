@@ -1,77 +1,80 @@
+# tests/conftest.py
 """
-Фикстуры для тестов.
+Общие фикстуры для тестов.
 """
 
 import pytest
-import asyncio
-from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import StaticPool
+import pytest_asyncio
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
+from app.main import app
+from app.core.config import settings
 from app.models.base import Base
-from app.config import settings
 
 
-# Тестовая база данных (SQLite in-memory)
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+# Фикстура для тестовой базы данных в памяти
+@pytest_asyncio.fixture(scope="session")
+async def test_engine():
+    """Создаем тестовую БД в памяти."""
+    test_db_url = "sqlite+aiosqlite:///:memory:"
+    engine = create_async_engine(
+        test_db_url,
+        echo=False,
+        future=True,
+    )
 
-# Движок для тестов
-test_engine = create_async_engine(
-    TEST_DATABASE_URL,
-    echo=False,
-    poolclass=StaticPool,  # Для тестов используем статический пул
-    connect_args={"check_same_thread": False},
-)
-
-# Сессия для тестов
-TestAsyncSessionLocal = async_sessionmaker(
-    test_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Создаем event loop для тестов."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope="session", autouse=True)
-async def setup_database():
-    """Создает и удаляет таблицы для тестов."""
     # Создаем таблицы
-    async with test_engine.begin() as conn:
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    yield engine
+
+    # Очищаем после тестов
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def db_session(test_engine):
+    """Сессия для тестовой БД."""
+    AsyncTestSessionLocal = sessionmaker(
+        test_engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    async with AsyncTestSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+@pytest_asyncio.fixture
+async def client():
+    """HTTP клиент для тестирования API."""
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        yield ac
+
+
+# Автоматически переопределяем настройки для тестов
+@pytest.fixture(autouse=True)
+def override_settings():
+    """
+    Переопределяем настройки для тестов.
+    """
+    original_debug = settings.DEBUG
+    original_db_url = settings.database_url_to_use
+
+    # Включаем DEBUG для тестов
+    settings.DEBUG = True
 
     yield
 
-    # Удаляем таблицы после тестов
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-
-
-@pytest.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Фикстура для получения сессии БД."""
-    async with TestAsyncSessionLocal() as session:
-        yield session
-
-
-@pytest.fixture
-def override_get_db(db_session: AsyncSession):
-    """Фикстура для подмены зависимости get_db."""
-
-    async def _override_get_db():
-        yield db_session
-
-    return _override_get_db
-
-
-def pytest_configure(config):
-    """Регистрируем маркеры."""
-    config.addinivalue_line("markers", "unit: unit tests (без БД)")
-    config.addinivalue_line("markers", "integration: integration tests (с БД)")
-    config.addinivalue_line("markers", "db: tests requiring database")
+    # Восстанавливаем оригинальные настройки
+    # settings.DEBUG = original_debug
+    # settings.DATABASE_URL = original_db_url

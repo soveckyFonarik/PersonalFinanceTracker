@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy import text
 from sqlalchemy.orm import DeclarativeBase
-from app.config import settings
+from app.core.config import settings
 
 
 # class Base(DeclarativeBase):
@@ -35,26 +35,6 @@ AsyncSessionLocal = async_sessionmaker(
     autocommit=False,
     autoflush=False,
 )
-
-
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """
-    Dependency для получения сессии БД в FastAPI.
-
-    Использование в FastAPI:
-    @app.get("/items/")
-    async def read_items(db: AsyncSession = Depends(get_db)):
-        # работа с db
-    """
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
 
 
 # Создаем объект database для удобного доступа в скриптах

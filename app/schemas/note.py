@@ -39,7 +39,7 @@ class NoteUpdate(BaseModel):
     )
 
 
-class Note(NoteBase):
+class NoteSchema(NoteBase):
     id: str = Field(..., description="Уникальный идентификатор заметки")
     created_at: datetime = Field(..., description="Дата создания")
     updated_at: datetime = Field(..., description="Дата последнего обновления")
@@ -47,4 +47,6 @@ class Note(NoteBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-__all__ = ["NoteBase", "NoteCreate", "NoteUpdate", "Note"]
+Note = NoteSchema
+
+__all__ = ["NoteBase", "NoteCreate", "NoteUpdate", "NoteSchema", "Note"]

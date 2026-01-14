@@ -1,102 +1,112 @@
+"""
+Основной файл приложения FastAPI.
+"""
+
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID, uuid4
+
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api import api_router
+from app.core.config import settings
+from app.database import database, AsyncSessionLocal
+from app.models.base import Base  # Импортируем Base из моделей
 
 
+# =========== LIFESPAN МЕНЕДЖЕР ===========
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Контекстный менеджер для управления жизненным циклом приложения.
+    Выполняется при старте и остановке приложения.
+    """
+    # Startup: инициализация БД
+    print("🚀 Инициализация базы данных...")
+    await init_database()
+
+    yield
+
+    # Shutdown: очистка ресурсов
+    print("👋 Закрытие соединений с БД...")
+    await database.disconnect()
+
+
+# =========== ФУНКЦИЯ ИНИЦИАЛИЗАЦИИ БД ===========
+async def init_database():
+    """Создание таблиц в базе данных, если они не существуют"""
+    try:
+        # Проверяем подключение
+        await database.connect()
+        print("✅ Подключение к БД успешно")
+
+        # Создаем таблицы
+        async with database.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        print("✅ Таблицы созданы/проверены")
+
+        # await create_initial_data()
+
+    except Exception as e:
+        print(f"❌ Ошибка при инициализации БД: {e}")
+        print("⚠️  Приложение запущено без БД. Проверьте подключение.")
+
+
+async def create_initial_data():
+    """Создание начальных данных (опционально)"""
+    from app.models.category import Category
+    from app.crud import category as crud_category
+
+    async with AsyncSessionLocal() as session:
+        # Проверяем, есть ли уже категории
+        categories = await session.execute(text("SELECT COUNT(*) FROM categories"))
+        count = categories.scalar()
+
+        if count == 0:
+            print("📝 Создание начальных категорий...")
+
+            initial_categories = [
+                {"name": "Еда", "description": "Покупка продуктов"},
+                {"name": "Транспорт", "description": "Транспортные расходы"},
+                {"name": "Развлечения", "description": "Кино, рестораны, хобби"},
+                {"name": "Здоровье", "description": "Медицина, спорт"},
+                {"name": "Образование", "description": "Курсы, книги"},
+            ]
+
+            for cat_data in initial_categories:
+                category = Category(**cat_data)
+                session.add(category)
+
+            await session.commit()
+            print(f"✅ Создано {len(initial_categories)} категорий")
+
+
+# =========== СОЗДАНИЕ ПРИЛОЖЕНИЯ ===========
 app = FastAPI(
-    title="Finance Tracker API",
-    description="Person finance management API",
-    version="0.1.0",
+    title=settings.PROJECT_NAME,
+    version=settings.PROJECT_VERSION,
+    description=settings.PROJECT_DESCRIPTION,
+    docs_url="/docs" if settings.DEBUG else None,
+    redoc_url="/redoc" if settings.DEBUG else None,
+    openapi_url="/openapi.json" if settings.DEBUG else None,
+    lifespan=lifespan,  # Добавляем lifespan менеджер
 )
 
-
-# Pydantic models
-class NoteBase(BaseModel):
-    title: str = Field(..., min_length=1, max_length=100)
-    content: Optional[str] = Field(None, max_length=1000)
-
-
-class NoteCreate(NoteBase):
-    pass
-
-
-class NoteUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=100)
-    content: Optional[str] = Field(None, max_length=1000)
-
-
-class Note(NoteBase):
-    id: UUID
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-# db in memory
-notes_db: List[Note] = []
-
-# end points
-
-
-@app.get("/")
-async def root():
-    return {"message": "Welcome to Finance Tracker API"}
-
-
-@app.get("/health")
-def health_check():
-    return {"status": "healthy", "timestamp": datetime.now(timezone.utc)}
-
-
-@app.post("/notes/", response_model=Note)
-async def create_note(note: NoteCreate):
-    """create new note"""
-    new_note = Note(
-        id=uuid4(),
-        title=note.title,
-        content=note.content,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+# =========== CORS НАСТРОЙКИ ===========
+if settings.BACKEND_CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[str(origin) for origin in settings.BACKEND_CORS_ORIGINS],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
-    notes_db.append(new_note)
-    return new_note
 
-
-@app.get("/notes/", response_model=List[Note])
-async def read_notes(skip: int = 0, limit: int = 10):
-    """get list notes + pagination"""
-    return notes_db[skip : skip + limit]
-
-
-@app.get("/notes/{notes_id}", response_model=Note)
-async def read_note(notes_id: UUID):
-    for note in notes_db:
-        if note.id == notes_id:
-            return note
-    raise HTTPException(status_code=404, detail="Note not found")
-
-
-@app.put("/notes/{note_id}", response_model=Note)
-async def update_note(note_id: UUID, note_update: NoteUpdate):
-    """Обновить заметку"""
-    for idx, note in enumerate(notes_db):
-        if note.id == note_id:
-            update_data = note_update.model_dump(exclude_unset=True)
-            updated_note = note.model_copy(update=update_data)
-            updated_note.updated_at = datetime.now(timezone.utc)
-            notes_db[idx] = updated_note
-            return updated_note
-    raise HTTPException(status_code=404, detail="Note not found")
-
-
-@app.delete("/notes/{note_id}")
-async def delete_note(note_id: UUID):
-    """Удалить заметку"""
-    for idx, note in enumerate(notes_db):
-        if note.id == note_id:
-            notes_db.pop(idx)
-            return {"message": "Note deleted successfully"}
-    raise HTTPException(status_code=404, detail="Note not found")
+# =========== ПОДКЛЮЧЕНИЕ API РОУТЕРОВ ===========
+app.include_router(api_router, prefix=settings.API_PREFIX)
